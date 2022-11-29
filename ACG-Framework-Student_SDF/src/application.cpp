@@ -38,8 +38,8 @@ Application::Application(int window_width, int window_height, SDL_Window* window
 
 	// Create camera
 	camera = new Camera();
-	camera->lookAt(Vector3(2.5f, 2.5f, 2.5f), Vector3(0.f, 0.0f, 0.f), Vector3(0.f, 1.f, 0.f));
-	camera->setPerspective(45.f, window_width/(float)window_height, .1f, 1000.f); //set the projection, we want to be perspective
+	camera->lookAt(Vector3(5.f, 5.f, 5.f), Vector3(0.f, 0.0f, 0.f), Vector3(0.f, 1.f, 0.f));
+	camera->setPerspective(45.f, window_width/(float)window_height, .1f, 1000.f); //set the projection, we want to be perspectiv
 
 	{
 		// EXAMPLE OF HOW TO CREATE A SCENE NODE

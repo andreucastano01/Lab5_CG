@@ -140,11 +140,11 @@ float opUnion(float dist1, float dist2) {
 float sdfScene(vec3 position) {
     vec3 sphere_pos = vec3(0.0);
     float n = snoise(vec4(position, 1.0));
-    float displacement = sin(5.0 * position.x) * sin(5.0 * position.y) * sin(5.0 * position.z) * 0.25;
+    float displacement = sin(5.0 * n) * sin(5.0 * n) * sin(5.0 * n) * 0.25;
     float sphere_0 = sdfSphere(position, sphere_pos, 1.0);
 
 
-    return sphere_0 + displacement + n;
+    return sphere_0 + displacement;
 }
 
 //-----------------------COMPUTE NORMAL SDF POINT------------------

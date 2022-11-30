@@ -11,7 +11,7 @@ uniform vec2 u_iRes;
 uniform vec3 u_camera_pos;
 
 struct material {
-    vec3 color;
+    vec3 c;
     float s;
 };
 
@@ -154,6 +154,11 @@ float sdfCylinder(vec3 p, vec3 a, vec3 b, float r)
     return sign(d)*sqrt(abs(d))/baba;
 }
 
+float sdfTorus( vec3 p, vec2 t )
+{
+    return length( vec2(length(p.xz)-t.x,p.y) )-t.y;
+}
+
 
 //----------------------SDF OPERATIONS------------------------------
 
@@ -176,37 +181,55 @@ material opSmoothUnion( material d1, material d2, float k )
     material dr;
     float h = max(k-abs(d1.s-d2.s),0.0);
     dr.s = min(d1.s, d2.s) - h*h*0.25/k;
-    dr.color = mix(d2.color, d1.color, interpolation);
+    dr.c = mix(d2.c, d1.c, interpolation);
     return dr;
+}
+
+vec3 Translate(in vec3 p, in vec3 t) {
+    return p - t;
 }
 
 
 //----------------------CREATE YOUR SCENE------------------------
 material sdfScene(vec3 position) {
+    vec4 metashapeInfo3 = vec4(0.0, 1.0, 3 * sin(u_time), 120.0);
+    float n = snoise(vec4(position, 1.0));
+    n = clamp(n, 0.0, 0.3);
+    //Among us
     material capsule0;
-    capsule0.color = vec3(1.0, 0.0, 0.0);
-    capsule0.s = sdfCapsule(position, vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
+    capsule0.c = vec3(1.0, 0.0, 0.0);
+    capsule0.s = sdfCapsule(Translate(position, metashapeInfo3.xyz), vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
 
     material capsule1;
-    capsule1.color = vec3(1.0, 1.0, 1.0);
-    capsule1.s = sdfCapsule(position, vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
+    capsule1.c = vec3(1.0, 1.0, 1.0);
+    capsule1.s = sdfCapsule(Translate(position, metashapeInfo3.xyz), vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
 
     material box;
-    box.color = vec3(1.0, 0.0, 0.0);
-    box.s = sdfBox(position, vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
+    box.c = vec3(1.0, 0.0, 0.0);
+    box.s = sdfBox(Translate(position, metashapeInfo3.xyz), vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
 
     material cylinder0;
-    cylinder0.color = vec3(1.0, 0.0, 0.0);
-    cylinder0.s = sdfCylinder(position, vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
+    cylinder0.c = vec3(1.0, 0.0, 0.0);
+    cylinder0.s = sdfCylinder(Translate(position, metashapeInfo3.xyz), vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
 
     material cylinder1;
-    cylinder1.color = vec3(1.0, 0.0, 0.0);
-    cylinder1.s = sdfCylinder(position, vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
+    cylinder1.c = vec3(1.0, 0.0, 0.0);
+    cylinder1.s = sdfCylinder(Translate(position, metashapeInfo3.xyz), vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
 
-    material r = opSmoothUnion(capsule0, capsule1, 0.1);
+    material aro;
+    aro.c = vec3(1.0, 1.0, 0.0);
+    aro.s = sdfTorus(Translate(vec3(position.x - 0.9, position.y - 4.7, position.z), metashapeInfo3.xyz), vec2(1.3, 0.1));
+
+    material plane;
+    plane.c = vec3(0.0, 1.0, n);
+    plane.s = sdfBox(position, vec3(1.1, -2.0, -1.0), vec3(20.0, 0.2, 20.0));
+
+    material r = opSmoothUnion(capsule0, capsule1, 0.02);
     r = opSmoothUnion(r, box, 0.1);
     r = opSmoothUnion(r, cylinder0, 0.1);
     r = opSmoothUnion(r, cylinder1, 0.1);
+    r = opSmoothUnion(r , aro, 0.1);
+    r = opSmoothUnion(r, plane, 0.1);
     return r;
 }
 
@@ -226,10 +249,9 @@ vec3 gradient(float h, vec3 coords) {
 }
 
 //---------------------------SIMPLE PHONG SHADING----------------
-vec3 phong(vec3 position, vec3 color) {
+vec3 phong(vec3 position, vec3 color, vec3 ld) {
     vec3 normal = gradient(0.0001, position);
-    vec3 l = normalize( vec3(-1.9, 5.0, 4.0) - position );
-    vec3 diff = vec3(0.7) * clamp( dot(l, normal), 0.0, 1.0);
+    vec3 diff = vec3(0.7) * clamp( dot(ld, normal), 0.0, 1.0);
     return diff * vec3(1.0, 1.0, 0.0) + color;
 }
 
@@ -245,9 +267,14 @@ mat3 setCamera(in vec3 origin, in vec3 target, float rotation) {
 vec3 ray_march(in vec3 ro, in vec3 rd)
 {
     float total_distance_traveled = 0.0;
-    const int NUMBER_OF_STEPS = 32;
+    const int NUMBER_OF_STEPS = 64;
     const float MINIMUM_HIT_DISTANCE = 0.001;
     const float MAXIMUM_TRACE_DISTANCE = 1000.0;
+    
+    //Background color	
+    vec3 ld = normalize(vec3(0.7, 0.7, 0.0));
+    float sun = clamp(dot(ld,rd), 0.0, 1.0);
+    vec3 bgcolor = vec3(1, 0.5, 0) * pow(sun, 4.0) + vec3(0.5, 0.6, 0.8) - rd.y * 0.4;
 
     for (int i = 0; i < NUMBER_OF_STEPS; ++i)
     {
@@ -257,7 +284,7 @@ vec3 ray_march(in vec3 ro, in vec3 rd)
 
         if (distance_to_closest.s < MINIMUM_HIT_DISTANCE) 
         {
-            return phong(current_position, distance_to_closest.color) + vec3(0.3);
+            return phong(current_position, distance_to_closest.c, ld) + vec3(0.1);
         }
 
         if (total_distance_traveled > MAXIMUM_TRACE_DISTANCE)
@@ -266,7 +293,7 @@ vec3 ray_march(in vec3 ro, in vec3 rd)
         }
         total_distance_traveled += distance_to_closest.s;
     }
-    return vec3(0.0);
+    return bgcolor;
 }
 
 
@@ -290,19 +317,6 @@ void main()
     vec4 acc_color = vec4(0.);
     vec3 shaded_color = ray_march(origen, dir);
     acc_color = vec4(shaded_color, 1.0);
-
-    /*for(int i=0; i<100; i++){
-        float min_length = 0;       
-        min_length = sdfScene(pos);
-        // HIT!! 
-        if (min_length < 0.001) {                              
-            acc_color = vec4(phong(pos), 1.0);
-            break;
-        } 
-
-        //Calculem la nova posició
-        pos += dir*min_length;              
-    }*/
 
     //Modifiquem el color final segons la brillantor
     gl_FragColor = acc_color;

@@ -10,6 +10,11 @@ uniform mat4 u_viewprojection;
 uniform vec2 u_iRes;
 uniform vec3 u_camera_pos;
 
+struct material {
+    vec3 color;
+    float s;
+};
+
 //Edit
 float random (in vec2 st) {
     return fract(sin(dot(st.xy,
@@ -165,43 +170,67 @@ float opSmoothUnion( float d1, float d2, float k )
     return min(d1, d2) - h*h*0.25/k;
 }
 
-//    float n = snoise(vec4(position, 1.0));
-//    float displacement = sin(5.0 * position.x) * sin(5.0 * position.y) * sin(5.0 * position.z) * 0.25;
+material opSmoothUnion( material d1, material d2, float k )
+{
+    float interpolation = clamp(0.5 + 0.5 * (d2.s - d1.s) / k, 0.0, 1.0);
+    material dr;
+    float h = max(k-abs(d1.s-d2.s),0.0);
+    dr.s = min(d1.s, d2.s) - h*h*0.25/k;
+    dr.color = mix(d2.color, d1.color, interpolation);
+    return dr;
+}
+
+
 //----------------------CREATE YOUR SCENE------------------------
-float sdfScene(vec3 position) {
-    float capsule_0 = sdfCapsule(position, vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
-    float capsule_1 = sdfCapsule(position, vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
-    float box_0 = sdfBox(position, vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
-    float cylinder_0 = sdfCylinder(position, vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
-    float cylinder_1 = sdfCylinder(position, vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
-    float r = opSmoothUnion(capsule_0, capsule_1, 0.1);
-    r = opSmoothUnion(r, box_0, 0.1);
-    r = opSmoothUnion(r, cylinder_0, 0.1);
-    r = opSmoothUnion(r, cylinder_1, 0.1);
+material sdfScene(vec3 position) {
+    material capsule0;
+    capsule0.color = vec3(1.0, 0.0, 0.0);
+    capsule0.s = sdfCapsule(position, vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
+
+    material capsule1;
+    capsule1.color = vec3(1.0, 1.0, 1.0);
+    capsule1.s = sdfCapsule(position, vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
+
+    material box;
+    box.color = vec3(1.0, 0.0, 0.0);
+    box.s = sdfBox(position, vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
+
+    material cylinder0;
+    cylinder0.color = vec3(1.0, 0.0, 0.0);
+    cylinder0.s = sdfCylinder(position, vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
+
+    material cylinder1;
+    cylinder1.color = vec3(1.0, 0.0, 0.0);
+    cylinder1.s = sdfCylinder(position, vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
+
+    material r = opSmoothUnion(capsule0, capsule1, 0.1);
+    r = opSmoothUnion(r, box, 0.1);
+    r = opSmoothUnion(r, cylinder0, 0.1);
+    r = opSmoothUnion(r, cylinder1, 0.1);
     return r;
 }
 
 //-----------------------COMPUTE NORMAL SDF POINT------------------
 vec3 gradient(float h, vec3 coords) {
     vec3 r = vec3(0.0);
-    float grad_x = sdfScene(vec3(coords.x + h, coords.y, coords.z)).x - 
-                   sdfScene(vec3(coords.x - h, coords.y, coords.z)).x;
+    float grad_x = sdfScene(vec3(coords.x + h, coords.y, coords.z)).s - 
+                   sdfScene(vec3(coords.x - h, coords.y, coords.z)).s;
 
-    float grad_y = sdfScene(vec3(coords.x, coords.y + h, coords.z)).x - 
-                   sdfScene(vec3(coords.x, coords.y - h, coords.z)).x;
+    float grad_y = sdfScene(vec3(coords.x, coords.y + h, coords.z)).s - 
+                   sdfScene(vec3(coords.x, coords.y - h, coords.z)).s;
     
-    float grad_z = sdfScene(vec3(coords.x, coords.y, coords.z + h)).x - 
-                   sdfScene(vec3(coords.x, coords.y, coords.z - h)).x;
+    float grad_z = sdfScene(vec3(coords.x, coords.y, coords.z + h)).s - 
+                   sdfScene(vec3(coords.x, coords.y, coords.z - h)).s;
     
     return normalize(vec3(grad_x, grad_y, grad_z)  /  (h * 2));
 }
 
 //---------------------------SIMPLE PHONG SHADING----------------
-vec3 phong(vec3 position) {
+vec3 phong(vec3 position, vec3 color) {
     vec3 normal = gradient(0.0001, position);
     vec3 l = normalize( vec3(-1.9, 5.0, 4.0) - position );
     vec3 diff = vec3(0.7) * clamp( dot(l, normal), 0.0, 1.0);
-    return diff * vec3(1.0, 1.0, 0.0);
+    return diff * vec3(1.0, 1.0, 0.0) + color;
 }
 
 
@@ -224,18 +253,18 @@ vec3 ray_march(in vec3 ro, in vec3 rd)
     {
         vec3 current_position = ro + total_distance_traveled * rd;
 
-        float distance_to_closest = sdfScene(current_position);
+        material distance_to_closest = sdfScene(current_position);
 
-        if (distance_to_closest < MINIMUM_HIT_DISTANCE) 
+        if (distance_to_closest.s < MINIMUM_HIT_DISTANCE) 
         {
-            return phong(current_position) + vec3(0.3);
+            return phong(current_position, distance_to_closest.color) + vec3(0.3);
         }
 
         if (total_distance_traveled > MAXIMUM_TRACE_DISTANCE)
         {
             break;
         }
-        total_distance_traveled += distance_to_closest;
+        total_distance_traveled += distance_to_closest.s;
     }
     return vec3(0.0);
 }

@@ -127,6 +127,29 @@ float sdfBox(vec3 point, vec3 center, vec3 b) {
   return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }
 
+float sdfCapsule( vec3 p, vec3 a, vec3 b, float r )
+{
+	vec3 pa = p-a, ba = b-a;
+	float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+	return length( pa - ba*h ) - r;
+}
+
+float sdfCylinder(vec3 p, vec3 a, vec3 b, float r)
+{
+    vec3 pa = p - a;
+    vec3 ba = b - a;
+    float baba = dot(ba,ba);
+    float paba = dot(pa,ba);
+
+    float x = length(pa*baba-ba*paba) - r*baba;
+    float y = abs(paba-baba*0.5)-baba*0.5;
+    float x2 = x*x;
+    float y2 = y*y*baba;
+    float d = (max(x,y)<0.0)?-min(x2,y2):(((x>0.0)?x2:0.0)+((y>0.0)?y2:0.0));
+    return sign(d)*sqrt(abs(d))/baba;
+}
+
+
 //----------------------SDF OPERATIONS------------------------------
 
 float opUnion(float dist1, float dist2) {
@@ -136,15 +159,26 @@ float opUnion(float dist1, float dist2) {
     return dist2;
 }
 
+float opSmoothUnion( float d1, float d2, float k )
+{
+    float h = max(k-abs(d1-d2),0.0);
+    return min(d1, d2) - h*h*0.25/k;
+}
+
+//    float n = snoise(vec4(position, 1.0));
+//    float displacement = sin(5.0 * position.x) * sin(5.0 * position.y) * sin(5.0 * position.z) * 0.25;
 //----------------------CREATE YOUR SCENE------------------------
 float sdfScene(vec3 position) {
-    vec3 sphere_pos = vec3(0.0);
-    float n = snoise(vec4(position, 1.0));
-    float displacement = sin(5.0 * n) * sin(5.0 * n) * sin(5.0 * n) * 0.25;
-    float sphere_0 = sdfSphere(position, sphere_pos, 1.0);
-
-
-    return sphere_0 + displacement;
+    float capsule_0 = sdfCapsule(position, vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
+    float capsule_1 = sdfCapsule(position, vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
+    float box_0 = sdfBox(position, vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
+    float cylinder_0 = sdfCylinder(position, vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
+    float cylinder_1 = sdfCylinder(position, vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
+    float r = opSmoothUnion(capsule_0, capsule_1, 0.1);
+    r = opSmoothUnion(r, box_0, 0.1);
+    r = opSmoothUnion(r, cylinder_0, 0.1);
+    r = opSmoothUnion(r, cylinder_1, 0.1);
+    return r;
 }
 
 //-----------------------COMPUTE NORMAL SDF POINT------------------
@@ -165,9 +199,9 @@ vec3 gradient(float h, vec3 coords) {
 //---------------------------SIMPLE PHONG SHADING----------------
 vec3 phong(vec3 position) {
     vec3 normal = gradient(0.0001, position);
-    vec3 l = normalize( vec3(-1.9, 3.0, 3.0) - position );
-    vec3 diff = vec3(0.5) * clamp( dot(l, normal), 0.0, 1.0);
-    return diff + vec3(0.1);
+    vec3 l = normalize( vec3(-1.9, 5.0, 4.0) - position );
+    vec3 diff = vec3(0.7) * clamp( dot(l, normal), 0.0, 1.0);
+    return diff * vec3(1.0, 1.0, 0.0);
 }
 
 
@@ -194,13 +228,7 @@ vec3 ray_march(in vec3 ro, in vec3 rd)
 
         if (distance_to_closest < MINIMUM_HIT_DISTANCE) 
         {
-            vec3 normal = gradient(0.001, current_position);
-            vec3 light_position = vec3(2.0, -5.0, 3.0);
-            vec3 direction_to_light = normalize(current_position - light_position);
-
-            float diffuse_intensity = max(0.0, dot(normal, direction_to_light));
-
-            return vec3(1.0, 0.0, 0.0) * diffuse_intensity;
+            return phong(current_position) + vec3(0.3);
         }
 
         if (total_distance_traveled > MAXIMUM_TRACE_DISTANCE)

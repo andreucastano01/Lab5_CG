@@ -9,6 +9,8 @@ uniform mat4 u_viewprojection;
 
 uniform vec2 u_iRes;
 uniform vec3 u_camera_pos;
+uniform vec3 u_color_amongus;
+uniform vec3 u_sun;
 
 struct material {
     vec3 c;
@@ -189,37 +191,58 @@ vec3 Translate(in vec3 p, in vec3 t) {
     return p - t;
 }
 
+vec3 Rotate(in vec3 p, in vec3 r) {
+    vec3 rad = radians(-r);
+    vec3 cosRad = cos(rad);
+    vec3 sinRad = sin(rad);
+
+    mat3 xRotation = mat3(1.0,      0.0,       0.0,
+                          0.0, cosRad.x, -sinRad.x,
+                          0.0, sinRad.x,  cosRad.x);
+
+    mat3 yRotation = mat3( cosRad.y, 0.0, sinRad.y,
+                                0.0, 1.0,      0.0,
+                          -sinRad.y, 0.0, cosRad.y);
+
+    mat3 zRotation = mat3(cosRad.z, -sinRad.z, 0.0,
+                          sinRad.z,  cosRad.z, 0.0,
+                               0.0,       0.0, 1.0);
+
+    return zRotation * yRotation * xRotation * p;
+}
+
 
 //----------------------CREATE YOUR SCENE------------------------
 material sdfScene(vec3 position) {
-    vec4 metashapeInfo3 = vec4(0.0, 1.0, 3 * sin(u_time), 120.0);
-    float n = snoise(vec4(position, 1.0));
-    n = clamp(n, 0.0, 0.3);
+    vec4 metashapeInfo = vec4(3 * cos(0.5 * u_time), 1.0, 3 * sin(0.5 * u_time), 120.0);
     //Among us
+    //Cuerpo
     material capsule0;
-    capsule0.c = vec3(1.0, 0.0, 0.0);
-    capsule0.s = sdfCapsule(Translate(position, metashapeInfo3.xyz), vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
+    capsule0.c = u_color_amongus;
+    capsule0.s = sdfCapsule(Rotate(Translate(position, metashapeInfo.xyz), vec3(0.0, 29.0 * u_time, 0.0)), vec3(1.0, 3.0, 0.0), vec3(1.0, 0.0, 0.0), 1.5);
 
+    //Ojo
     material capsule1;
     capsule1.c = vec3(1.0, 1.0, 1.0);
-    capsule1.s = sdfCapsule(Translate(position, metashapeInfo3.xyz), vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
+    capsule1.s = sdfCapsule(Rotate(Translate(position, metashapeInfo.xyz), vec3(0.0, 29.0 * u_time, 0.0)), vec3(1.0, 2.5, 1.0), vec3(0.8, 2.5, 0.0), 1.0);
 
+    //Mochila
     material box;
-    box.c = vec3(1.0, 0.0, 0.0);
-    box.s = sdfBox(Translate(position, metashapeInfo3.xyz), vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
+    box.c = u_color_amongus;
+    box.s = sdfBox(Rotate(Translate(position, metashapeInfo.xyz), vec3(0.0, 29.0 * u_time, 0.0)), vec3(1.1, 1.0, -1.0), vec3(1.0, 1.3, 1.0));
 
+    //Piernas
     material cylinder0;
-    cylinder0.c = vec3(1.0, 0.0, 0.0);
-    cylinder0.s = sdfCylinder(Translate(position, metashapeInfo3.xyz), vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
+    cylinder0.c = u_color_amongus;
+    cylinder0.s = sdfCylinder(Rotate(Translate(position, metashapeInfo.xyz), vec3(0.0, 29.0 * u_time, 0.0)), vec3(1.7, -2.5, 0.8), vec3(1.5, 2.5, 0.0), 0.7);
 
     material cylinder1;
-    cylinder1.c = vec3(1.0, 0.0, 0.0);
-    cylinder1.s = sdfCylinder(Translate(position, metashapeInfo3.xyz), vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
+    cylinder1.c = u_color_amongus;
+    cylinder1.s = sdfCylinder(Rotate(Translate(position, metashapeInfo.xyz), vec3(0.0, 29.0 * u_time, 0.0)), vec3(0.3, -2.5, -0.7), vec3(0.3, 2.5, 0.0), 0.7);
 
-    material aro;
-    aro.c = vec3(1.0, 1.0, 0.0);
-    aro.s = sdfTorus(Translate(vec3(position.x - 0.9, position.y - 4.7, position.z), metashapeInfo3.xyz), vec2(1.3, 0.1));
-
+    //Suelo
+    float n = snoise(vec4(position, 1.0));
+    n = clamp(n, 0.0, 0.3);
     material plane;
     plane.c = vec3(0.0, 1.0, n);
     plane.s = sdfBox(position, vec3(1.1, -2.0, -1.0), vec3(20.0, 0.2, 20.0));
@@ -228,7 +251,6 @@ material sdfScene(vec3 position) {
     r = opSmoothUnion(r, box, 0.1);
     r = opSmoothUnion(r, cylinder0, 0.1);
     r = opSmoothUnion(r, cylinder1, 0.1);
-    r = opSmoothUnion(r , aro, 0.1);
     r = opSmoothUnion(r, plane, 0.1);
     return r;
 }
@@ -272,7 +294,7 @@ vec3 ray_march(in vec3 ro, in vec3 rd)
     const float MAXIMUM_TRACE_DISTANCE = 1000.0;
     
     //Background color	
-    vec3 ld = normalize(vec3(0.7, 0.7, 0.0));
+    vec3 ld = normalize(u_sun);
     float sun = clamp(dot(ld,rd), 0.0, 1.0);
     vec3 bgcolor = vec3(1, 0.5, 0) * pow(sun, 4.0) + vec3(0.5, 0.6, 0.8) - rd.y * 0.4;
 

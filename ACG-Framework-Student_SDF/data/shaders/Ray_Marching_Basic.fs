@@ -156,11 +156,6 @@ float sdfCylinder(vec3 p, vec3 a, vec3 b, float r)
     return sign(d)*sqrt(abs(d))/baba;
 }
 
-float sdfTorus( vec3 p, vec2 t )
-{
-    return length( vec2(length(p.xz)-t.x,p.y) )-t.y;
-}
-
 
 //----------------------SDF OPERATIONS------------------------------
 
@@ -169,12 +164,6 @@ float opUnion(float dist1, float dist2) {
         return dist1;
     }
     return dist2;
-}
-
-float opSmoothUnion( float d1, float d2, float k )
-{
-    float h = max(k-abs(d1-d2),0.0);
-    return min(d1, d2) - h*h*0.25/k;
 }
 
 material opSmoothUnion( material d1, material d2, float k )
